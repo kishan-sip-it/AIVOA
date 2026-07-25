@@ -1,16 +1,17 @@
 import { useEffect } from "react";
-import { AlertTriangle, ArrowRight, CheckCircle2, ClipboardCheck, LockKeyhole, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, ClipboardCheck, LockKeyhole, RotateCcw, Sparkles } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   clearHighlights,
+  resetComplaint,
   setCommitSuccess,
   setCommitting,
   setComplaintError,
   updateField,
 } from "../store/complaintSlice";
-import { addMessage } from "../store/chatSlice";
+import { addMessage, resetChat } from "../store/chatSlice";
 import { commitComplaint } from "../api/complaintApi";
-import { COMPLAINT_SOURCES, SITE_BLOCKS, COMPLAINT_CATEGORIES } from "../lib/complaintFields";
+import { COMPLAINT_SOURCES, SITE_BLOCKS, COMPLAINT_CATEGORIES, PRIORITY_LEVELS } from "../lib/complaintFields";
 
 // FIX: field-level building blocks must live at MODULE scope, not be
 // redefined inside ComplaintForm's render body. Defining a component
@@ -116,6 +117,11 @@ export default function ComplaintForm() {
       : severity === "Minor"
       ? "bg-amber-50 text-amber-700 border-amber-200"
       : "bg-slate-50 text-slate-500 border-slate-200";
+
+  function handleReset() {
+    dispatch(resetComplaint());
+    dispatch(resetChat());
+  }
 
   async function handleCommit() {
     dispatch(setCommitting(true));
@@ -265,7 +271,7 @@ export default function ComplaintForm() {
 
           <div>
             <SectionTitle index="04" title="Defect analysis" />
-            <div className="grid gap-4">
+            <div className="grid gap-4 sm:grid-cols-2">
               <SelectField
                 label="Complaint category"
                 required
@@ -275,6 +281,23 @@ export default function ComplaintForm() {
                 highlighted={isHighlighted("complaint_category")}
                 onChange={(v) => setField("complaint_category", v)}
               />
+              <TextField
+                label="Complaint date"
+                type="date"
+                value={extractedData.complaint_date}
+                highlighted={isHighlighted("complaint_date")}
+                onChange={(v) => setField("complaint_date", v)}
+              />
+              <SelectField
+                label="Priority"
+                placeholder="Select priority"
+                options={PRIORITY_LEVELS}
+                value={extractedData.priority}
+                highlighted={isHighlighted("priority")}
+                onChange={(v) => setField("priority", v)}
+              />
+            </div>
+            <div className="mt-4 grid gap-4">
               <label className="block">
                 <span className="text-xs font-semibold text-slate-600">
                   Complaint description<span className="text-rose-500">*</span>
@@ -342,16 +365,27 @@ export default function ComplaintForm() {
             <LockKeyhole className="h-3.5 w-3.5" />
             Audit trail enabled
           </div>
-          <button
-            type="button"
-            disabled={status !== "ready" || isCommitting}
-            onClick={handleCommit}
-            className="ml-auto inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
-          >
-            <CheckCircle2 className="h-4 w-4" />
-            {isCommitting ? "Committing…" : "Commit to QMS Ledger"}
-            <ArrowRight className="h-4 w-4" />
-          </button>
+          <div className="ml-auto flex items-center gap-3">
+            <button
+              type="button"
+              onClick={handleReset}
+              disabled={isCommitting}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <RotateCcw className="h-4 w-4" />
+              Reset form
+            </button>
+            <button
+              type="button"
+              disabled={status !== "ready" || isCommitting}
+              onClick={handleCommit}
+              className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-slate-700 disabled:cursor-not-allowed disabled:bg-slate-300"
+            >
+              <CheckCircle2 className="h-4 w-4" />
+              {isCommitting ? "Committing…" : "Commit to QMS Ledger"}
+              <ArrowRight className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     </section>

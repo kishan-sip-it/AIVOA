@@ -29,6 +29,7 @@ MANDATORY_FIELDS = [
 COMPLAINT_SOURCES = ["Physician", "Pharmacist", "Patient", "Distributor", "Regulatory Body", "Sales Rep", "Other"]
 SITE_BLOCKS = ["Block A - Oral Solids", "Block B - Sterile/Injectables", "Block C - Packaging", "Block D - Warehouse/NPM", "Block E - R&D Pilot"]
 COMPLAINT_CATEGORIES = ["Product Quality Defect", "Packaging Defect", "Adverse Event/Reaction", "Counterfeit Suspected", "Labeling Error", "No Effect/Efficacy Complaint", "Foreign Particulate", "Other"]
+PRIORITY_LEVELS = ["Low", "Medium", "High", "Urgent"]
 
 
 # ---------------------------------------------------------------------------
@@ -58,6 +59,11 @@ class ExtractedComplaintData(BaseModel):
     complaint_category: Optional[str] = Field(
         default=None,
         description=f"Category of the complaint. Must be one of: {COMPLAINT_CATEGORIES}."
+    )
+    complaint_date: Optional[str] = Field(default=None, description="Date the complaint was reported/filed, in YYYY-MM-DD if stated or inferable (defaults to today if the input implies 'just now'/'today').")
+    priority: Optional[str] = Field(
+        default=None,
+        description=f"Handling priority for the QA team. Must be one of: {PRIORITY_LEVELS}. Infer from severity/urgency language in the complaint (e.g. patient harm or widespread batch impact -> Urgent/High)."
     )
     complaint_description: Optional[str] = Field(default=None, description="A clear, concise narrative summary of the complaint in professional QMS language.")
 

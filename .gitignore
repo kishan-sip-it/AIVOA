@@ -1,0 +1,66 @@
+# ─── ENVIRONMENT VARIABLES (SECRETS) ───
+.env
+.env.local
+.env.production
+
+# ── PYTHON VIRTUAL ENVIRONMENT ───
+venv/
+env/
+ENV/
+.venv/
+
+# ─── PYTHON CACHE & BUILD FILES ───
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ─── NODE.JS / REACT ───
+node_modules/
+frontend/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ─── REACT BUILD FILES ───
+frontend/build/
+frontend/dist/
+*.log
+
+# ─── IDE & EDITOR FILES ───
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ─── OS FILES ──
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ─── DATABASE FILES (Optional) ───
+*.db
+*.sqlite
+*.sqlite3
+
+# ─── TESTING & COVERAGE ───
+.pytest_cache/
+.coverage
+htmlcov/

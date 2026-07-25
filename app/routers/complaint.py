@@ -5,8 +5,7 @@ All /api/complaint/* endpoints. Kept separate from main.py so main.py stays
 a thin app-factory/wiring file, per the "separate routers, services, models"
 requirement.
 """
-import sys
-import traceback
+
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -14,7 +13,6 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models import Complaint
 from app.services.pdf_service import extract_text_from_pdf
-
 from app.graph import intake_graph, correction_graph
 from app.schemas import (
     ChatRequest,
@@ -42,7 +40,10 @@ async def process_complaint(
 
     input_text = raw_text or ""
 
-    if file:
+    # NOTE: an UploadFile object is truthy even when no real file was chosen
+    # (e.g. Swagger's "Try it out" sends an empty file part) — so we check
+    # for a non-empty filename, not just `if file:`.
+    if file and file.filename:
         if file.content_type != "application/pdf" and not file.filename.lower().endswith(".pdf"):
             raise HTTPException(status_code=400, detail="Only PDF file uploads are supported.")
         file_bytes = await file.read()
@@ -124,6 +125,8 @@ async def commit_complaint(payload: CommitComplaintRequest, db: Session = Depend
         originating_site_block=data.get("originating_site_block"),
         impacted_npm=data.get("impacted_npm"),
         complaint_category=data.get("complaint_category"),
+        complaint_date=data.get("complaint_date"),
+        priority=data.get("priority"),
         complaint_description=data.get("complaint_description"),
         severity_suggested=risk.get("severity_suggested"),
         suggested_next_action=risk.get("suggested_next_action"),

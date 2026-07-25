@@ -22,8 +22,11 @@ const chatSlice = createSlice({
     clearMessages(state) {
       state.messages = [];
     },
+    resetChat() {
+      return initialState;
+    },
   },
 });
 
-export const { addMessage, clearMessages } = chatSlice.actions;
+export const { addMessage, clearMessages, resetChat } = chatSlice.actions;
 export default chatSlice.reducer;

@@ -30,6 +30,8 @@ export const COMPLAINT_CATEGORIES = [
   "Other",
 ];
 
+export const PRIORITY_LEVELS = ["Low", "Medium", "High", "Urgent"];
+
 // Must match MANDATORY_FIELDS in app/schemas.py
 export const MANDATORY_FIELDS = [
   "complaint_source",
@@ -55,6 +57,8 @@ export const FIELD_LABELS = {
   originating_site_block: "originating site block",
   impacted_npm: "impacted non-product materials",
   complaint_category: "complaint category",
+  complaint_date: "complaint date",
+  priority: "priority",
   complaint_description: "complaint description",
 };
 
@@ -72,6 +76,8 @@ export const EMPTY_EXTRACTED_DATA = {
   originating_site_block: "",
   impacted_npm: "",
   complaint_category: "",
+  complaint_date: "",
+  priority: "",
   complaint_description: "",
 };
 

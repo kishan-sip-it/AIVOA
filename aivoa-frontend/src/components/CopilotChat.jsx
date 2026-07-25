@@ -1,5 +1,5 @@
-import { useRef, useState } from "react";
-import { ArrowUp, Bot, FileText, Paperclip, Sparkles, UserRound } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { ArrowUp, Bot, CloudUpload, FileText, Paperclip, Sparkles, UserRound } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
 import { addMessage } from "../store/chatSlice";
 import { applyWorkflowResult, setProcessing, setRawInput } from "../store/complaintSlice";
@@ -36,7 +36,31 @@ export default function CopilotChat() {
     (state) => state.complaint
   );
   const [message, setMessage] = useState("");
+  const [isDragging, setIsDragging] = useState(false);
+  const [progress, setProgress] = useState(0);
   const fileInputRef = useRef(null);
+  const dragCounterRef = useRef(0);
+
+  // No backend progress stream exists (a single /process call either
+  // resolves or doesn't), so this animates toward — but never quite
+  // reaches — 90% while waiting, then snaps to 100% on completion. It's an
+  // honest "still working" signal, not a fabricated precise measurement.
+  useEffect(() => {
+    if (!isProcessing) {
+      if (progress !== 0) {
+        setProgress(100);
+        const t = setTimeout(() => setProgress(0), 500);
+        return () => clearTimeout(t);
+      }
+      return;
+    }
+    setProgress(8);
+    const interval = setInterval(() => {
+      setProgress((p) => (p < 90 ? p + (90 - p) * 0.15 : p));
+    }, 350);
+    return () => clearInterval(interval);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isProcessing]);
 
   // Anything already extracted means intake has started — from here on,
   // follow-ups route through /chat (correction_node) instead of /process,
@@ -111,7 +135,15 @@ export default function CopilotChat() {
       return;
     }
 
-    dispatch(addMessage({ id: crypto.randomUUID(), role: "user", content: `Attached ${file.name}`, timestamp: now() }));
+    dispatch(
+      addMessage({
+        id: crypto.randomUUID(),
+        role: "user",
+        content: "",
+        fileName: file.name,
+        timestamp: now(),
+      })
+    );
     dispatch(setProcessing(true));
     try {
       const result = await processComplaint({ file });
@@ -138,8 +170,49 @@ export default function CopilotChat() {
     }
   }
 
+  function handleDragEnter(e) {
+    e.preventDefault();
+    dragCounterRef.current += 1;
+    setIsDragging(true);
+  }
+
+  function handleDragOver(e) {
+    e.preventDefault();
+  }
+
+  function handleDragLeave(e) {
+    e.preventDefault();
+    dragCounterRef.current -= 1;
+    if (dragCounterRef.current <= 0) {
+      dragCounterRef.current = 0;
+      setIsDragging(false);
+    }
+  }
+
+  function handleDrop(e) {
+    e.preventDefault();
+    dragCounterRef.current = 0;
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    onFileChosen(file);
+  }
+
   return (
-    <aside className="flex min-h-0 flex-col bg-[#101827] text-white">
+    <aside
+      className="relative flex min-h-0 flex-col bg-[#101827] text-white"
+      onDragEnter={handleDragEnter}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+    >
+      {isDragging && (
+        <div className="pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-indigo-300 bg-slate-950/90 backdrop-blur-sm">
+          <CloudUpload className="h-8 w-8 text-indigo-300" />
+          <p className="text-sm font-semibold text-white">Drop your complaint document here</p>
+          <p className="text-xs text-slate-400">PDF only, right now</p>
+        </div>
+      )}
+
       <div className="border-b border-white/10 px-6 py-5 sm:px-7">
         <div className="flex items-center gap-3">
           <div className="grid h-9 w-9 place-items-center rounded-xl bg-gradient-to-br from-indigo-400 to-cyan-300 text-slate-950 shadow-lg shadow-indigo-500/20">
@@ -148,7 +221,15 @@ export default function CopilotChat() {
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold">AIVOA Copilot</h2>
-              <span className="h-2 w-2 rounded-full bg-emerald-400" />
+              <span
+                className={`h-2 w-2 rounded-full ${
+                  isProcessing
+                    ? "animate-pulse bg-indigo-400"
+                    : status === "ready"
+                    ? "bg-emerald-400"
+                    : "bg-sky-400"
+                }`}
+              />
             </div>
             <p className="mt-0.5 text-xs text-slate-400">Pharmacovigilance intake assistant</p>
           </div>
@@ -169,31 +250,48 @@ export default function CopilotChat() {
             >
               {item.role === "assistant" ? <Bot className="h-4 w-4" /> : <UserRound className="h-3.5 w-3.5" />}
             </div>
-            <div
-              className={`max-w-[85%] rounded-2xl px-3.5 py-3 text-sm leading-5 ${
-                item.role === "assistant"
-                  ? "rounded-tl-sm border border-white/10 bg-white/[0.07] text-slate-200"
-                  : "rounded-tr-sm bg-indigo-500 text-white"
-              }`}
-            >
-              {item.content.split("\n").map((line, i) => (
-                <p className={i ? "mt-2" : ""} key={i}>
-                  {line}
-                </p>
-              ))}
-            </div>
+            {item.fileName ? (
+              <div className="flex max-w-[85%] items-center gap-3 rounded-2xl rounded-tr-sm border border-white/10 bg-white/[0.07] px-3.5 py-3">
+                <div className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-rose-400/20 text-rose-300">
+                  <FileText className="h-4.5 w-4.5" />
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-white">{item.fileName}</p>
+                  <p className="text-xs text-slate-400">PDF Document</p>
+                </div>
+              </div>
+            ) : (
+              <div
+                className={`max-w-[85%] rounded-2xl px-3.5 py-3 text-sm leading-5 ${
+                  item.role === "assistant"
+                    ? "rounded-tl-sm border border-white/10 bg-white/[0.07] text-slate-200"
+                    : "rounded-tr-sm bg-indigo-500 text-white"
+                }`}
+              >
+                {item.content.split("\n").map((line, i) => (
+                  <p className={i ? "mt-2" : ""} key={i}>
+                    {line}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
         ))}
         {isProcessing && (
-          <div className="flex gap-2.5">
-            <div className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-400/20 text-indigo-200">
-              <Bot className="h-4 w-4" />
+          <div className="rounded-2xl border border-white/10 bg-white/[0.07] p-4">
+            <div className="mb-2 flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">
+              <span>Extraction progress</span>
+              <span className="text-indigo-200">{Math.round(progress)}%</span>
             </div>
-            <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm border border-white/10 bg-white/[0.07] px-4 py-3">
-              <i className="h-1.5 w-1.5 animate-bounce rounded-full bg-indigo-300 [animation-delay:-0.3s]" />
-              <i className="h-1.5 w-1.5 animate-bounce rounded-full bg-indigo-300 [animation-delay:-0.15s]" />
-              <i className="h-1.5 w-1.5 animate-bounce rounded-full bg-indigo-300" />
+            <div className="h-1.5 w-full overflow-hidden rounded-full bg-white/10">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-indigo-400 to-cyan-300 transition-all duration-300"
+                style={{ width: `${Math.round(progress)}%` }}
+              />
             </div>
+            <p className="mt-2.5 text-xs leading-5 text-slate-400">
+              Analyzing content and extracting key details… this may take a few moments.
+            </p>
           </div>
         )}
       </div>
@@ -244,7 +342,10 @@ export default function CopilotChat() {
         </div>
         <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-slate-500">
           <FileText className="h-3 w-3" />
-          AI outputs are captured in the complaint audit record
+          AI outputs are captured in the complaint audit record — or drag & drop a PDF anywhere in this panel
+        </div>
+        <div className="mt-1.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
+          Powered by LangGraph
         </div>
       </div>
     </aside>

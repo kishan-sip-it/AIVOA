@@ -13,7 +13,7 @@ extraction instructions the LLM sees when we bind this schema with
 extraction accuracy.
 """
 
-from typing import Optional, List, Literal, TypedDict
+from typing import Optional, List, Literal, TypedDict, NotRequired
 from pydantic import BaseModel, Field
 
 MANDATORY_FIELDS = [
@@ -95,6 +95,21 @@ class CorrectionOutput(BaseModel):
     )
 
 
+class EnrichmentOutput(BaseModel):
+    """Structured output for enrichment_node — bonus AI features: a plain-
+    language summary, a root cause hypothesis, and a CAPA recommendation."""
+
+    complaint_summary: str = Field(
+        description="A 1-2 sentence plain-language summary of the complaint, suitable for a dashboard or weekly report — not a QMS-style narrative, just a quick human-readable gist."
+    )
+    root_cause_recommendation: str = Field(
+        description="A 1-3 sentence hypothesis of the most likely root cause category (e.g. packaging seal failure, cold-chain excursion, cross-contamination, labeling/process error, insufficient evidence to determine), based only on the complaint data given — phrase it as a hypothesis to investigate, not a confirmed finding."
+    )
+    capa_recommendation: str = Field(
+        description="A concrete, specific CAPA (Corrective and Preventive Action) recommendation for the QA team — e.g. 'Corrective: quarantine and re-inspect remaining batch stock. Preventive: review primary packaging seal QC checkpoints.' Keep it actionable, not generic."
+    )
+
+
 # ---------------------------------------------------------------------------
 # 2. LangGraph state
 # ---------------------------------------------------------------------------
@@ -112,6 +127,11 @@ class ComplaintGraphState(TypedDict):
     is_complete: bool
     status: str          # "pending" | "ready"
     last_message: str    # newest incoming chat message routed to correction_node
+    complaint_summary: NotRequired[Optional[str]]
+    root_cause_recommendation: NotRequired[Optional[str]]
+    capa_recommendation: NotRequired[Optional[str]]
+    duplicate_matches: NotRequired[List[dict]]
+    notice: NotRequired[Optional[str]]  # set when an LLM call fails/refuses, so the UI can show a clean message instead of crashing
 
 
 # ---------------------------------------------------------------------------
@@ -135,6 +155,11 @@ class ProcessComplaintResponse(BaseModel):
     is_complete: bool
     status: str
     chat_history: List[ChatMessage]
+    complaint_summary: Optional[str] = None
+    root_cause_recommendation: Optional[str] = None
+    capa_recommendation: Optional[str] = None
+    duplicate_matches: List[dict] = []
+    notice: Optional[str] = None
 
 
 class ChatResponse(BaseModel):
@@ -144,6 +169,11 @@ class ChatResponse(BaseModel):
     status: str
     chat_history: List[ChatMessage]
     ai_message: str
+    complaint_summary: Optional[str] = None
+    root_cause_recommendation: Optional[str] = None
+    capa_recommendation: Optional[str] = None
+    duplicate_matches: List[dict] = []
+    notice: Optional[str] = None
 
 
 class CommitComplaintRequest(BaseModel):
@@ -151,6 +181,9 @@ class CommitComplaintRequest(BaseModel):
     risk_assessment: dict
     raw_input: Optional[str] = None
     chat_history: Optional[List[ChatMessage]] = None
+    complaint_summary: Optional[str] = None
+    root_cause_recommendation: Optional[str] = None
+    capa_recommendation: Optional[str] = None
 
 
 class CommitComplaintResponse(BaseModel):

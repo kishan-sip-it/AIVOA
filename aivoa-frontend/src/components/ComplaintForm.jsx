@@ -95,6 +95,10 @@ export default function ComplaintForm() {
     qmsReference,
     error,
     rawInput,
+    complaintSummary,
+    rootCauseRecommendation,
+    capaRecommendation,
+    duplicateMatches,
   } = useSelector((state) => state.complaint);
   const chatMessages = useSelector((state) => state.chat.messages);
 
@@ -136,6 +140,9 @@ export default function ComplaintForm() {
         risk_assessment: riskAssessment,
         raw_input: rawInput,
         chat_history,
+        complaint_summary: complaintSummary,
+        root_cause_recommendation: rootCauseRecommendation,
+        capa_recommendation: capaRecommendation,
       });
 
       dispatch(setCommitSuccess(result.id));
@@ -313,6 +320,23 @@ export default function ComplaintForm() {
             </div>
           </div>
 
+          {duplicateMatches && duplicateMatches.length > 0 && (
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <div className="flex items-center gap-2 text-sm font-bold text-amber-800">
+                <AlertTriangle className="h-4 w-4" />
+                Possible duplicate complaint{duplicateMatches.length > 1 ? "s" : ""} found
+              </div>
+              <ul className="mt-2 space-y-1 text-xs text-amber-700">
+                {duplicateMatches.map((m) => (
+                  <li key={m.id}>
+                    {m.product_name} · Batch {m.batch_number} · {m.customer_name}
+                    {m.created_at ? ` · logged ${new Date(m.created_at).toLocaleDateString()}` : ""}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <div className="rounded-2xl border border-indigo-100 bg-indigo-50/40 p-4 sm:p-5">
             <div className="mb-4 flex items-center gap-2">
               <span className="grid h-7 w-7 place-items-center rounded-lg bg-indigo-600 text-white">
@@ -341,6 +365,18 @@ export default function ComplaintForm() {
                 <p className="mt-1.5 text-sm leading-5 text-slate-700">
                   {riskAssessment.initial_risk_assessment || "—"}
                 </p>
+              </div>
+              <div className="rounded-xl border border-white bg-white/80 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Complaint summary</p>
+                <p className="mt-1.5 text-sm leading-5 text-slate-700">{complaintSummary || "—"}</p>
+              </div>
+              <div className="rounded-xl border border-white bg-white/80 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">Root cause recommendation</p>
+                <p className="mt-1.5 text-sm leading-5 text-slate-700">{rootCauseRecommendation || "—"}</p>
+              </div>
+              <div className="rounded-xl border border-white bg-white/80 p-3">
+                <p className="text-[10px] font-bold uppercase tracking-[0.12em] text-slate-400">CAPA recommendation</p>
+                <p className="mt-1.5 text-sm leading-5 text-slate-700">{capaRecommendation || "—"}</p>
               </div>
             </div>
           </div>

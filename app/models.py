@@ -48,6 +48,9 @@ class Complaint(Base):
     severity_suggested = Column(String(50), nullable=True)
     suggested_next_action = Column(Text, nullable=True)
     initial_risk_assessment = Column(Text, nullable=True)
+    complaint_summary = Column(Text, nullable=True)
+    root_cause_recommendation = Column(Text, nullable=True)
+    capa_recommendation = Column(Text, nullable=True)
 
     # --- Audit / Traceability ---
     raw_input = Column(Text, nullable=True)          # original free text / PDF text

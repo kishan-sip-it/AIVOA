@@ -2,24 +2,37 @@
 graph.py
 --------
 LangGraph stateful workflow for the AIVOA Copilot.
+
+Intake graph:
+  parse_input_node -> duplicate_check_node -> risk_assessment_node
+  -> enrichment_node -> completeness_checker -> END
+
+Correction graph:
+  correction_node -> duplicate_check_node -> risk_assessment_node
+  -> enrichment_node -> completeness_checker -> END
 """
 
 import os
 import json
+import logging
 from dotenv import load_dotenv
 load_dotenv()
 
 from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import StateGraph, END
+from sqlalchemy import or_
 
 from app.schemas import (
     ComplaintGraphState,
     ExtractedComplaintData,
     RiskAssessmentOutput,
     CorrectionOutput,
+    EnrichmentOutput,
     MANDATORY_FIELDS,
 )
+
+logger = logging.getLogger("uvicorn.error")
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not GROQ_API_KEY:
@@ -34,20 +47,23 @@ llm = ChatGroq(
     api_key=GROQ_API_KEY,
 )
 
-# FIX: these were commented out — parse_input_node / risk_assessment_node /
-# correction_node all reference these names directly, so leaving them
-# commented caused a NameError on every single request (the actual cause
-# of your 500s).
-# FIX: default method="function_calling" (tool-calling) was flaky on
-# openai/gpt-oss-20b — it sometimes omitted required fields entirely
-# ("Tool call validation failed: missing properties") or refused to call
-# the tool at all when the input had little extractable info ("Tool choice
-# is required, but model did not call a tool"). json_mode is more reliable
-# here: the model just has to emit a JSON object matching the schema,
-# with no separate "should I call this tool at all" decision to get wrong.
 extraction_llm = llm.with_structured_output(ExtractedComplaintData, method="json_mode")
 risk_llm = llm.with_structured_output(RiskAssessmentOutput, method="json_mode")
 correction_llm = llm.with_structured_output(CorrectionOutput, method="json_mode")
+enrichment_llm = llm.with_structured_output(EnrichmentOutput, method="json_mode")
+
+# Shown to the user whenever an LLM call fails or refuses to generate valid
+# output — e.g. the model's own safety filter declines a request, or it
+# otherwise can't produce valid JSON. Instead of leaking a raw
+# groq.BadRequestError / stack trace to the UI, every node that calls the
+# LLM catches the failure and falls back to this message.
+GENERATION_FAILURE_NOTICE = (
+    "I wasn't able to process that message. This usually happens when the "
+    "input can't be converted into a structured QMS record — for example if "
+    "it contains language unrelated to a product complaint. Please rephrase "
+    "using professional, factual language describing the product, batch, "
+    "and issue, and I'll extract the details."
+)
 
 
 def _to_dict(result) -> dict:
@@ -60,6 +76,20 @@ def _to_dict(result) -> dict:
     if isinstance(result, dict):
         return result
     raise TypeError(f"Unexpected structured output type: {type(result)}")
+
+
+def _safe_invoke(chain, inputs: dict, node_name: str):
+    """Runs an LLM chain and returns (result_dict, None) on success, or
+    (None, error_message) on failure — covering both API-level refusals
+    (e.g. Groq's safety filter declining a request) and malformed output.
+    Callers use this to degrade gracefully instead of propagating a raw
+    exception up to a 500 response."""
+    try:
+        result = chain.invoke(inputs)
+        return _to_dict(result), None
+    except Exception as exc:
+        logger.error(f"[{node_name}] LLM call failed: {type(exc).__name__}: {exc}")
+        return None, GENERATION_FAILURE_NOTICE
 
 
 # ---------------------------------------------------------------------------
@@ -80,8 +110,11 @@ def parse_input_node(state: ComplaintGraphState) -> ComplaintGraphState:
     ])
 
     chain = prompt | extraction_llm
-    result = chain.invoke({"raw_input": state["raw_input"]})
-    data = _to_dict(result)
+    data, error = _safe_invoke(chain, {"raw_input": state["raw_input"]}, "parse_input_node")
+
+    if error:
+        state["notice"] = error
+        return state
 
     extracted = dict(state.get("extracted_data") or {})
     for field, value in data.items():
@@ -89,6 +122,56 @@ def parse_input_node(state: ComplaintGraphState) -> ComplaintGraphState:
             extracted[field] = value
 
     state["extracted_data"] = extracted
+    return state
+
+
+def duplicate_check_node(state: ComplaintGraphState) -> ComplaintGraphState:
+    """Bonus feature: Duplicate Complaint Detection. Looks in the committed
+    QMS ledger for existing complaints on the same batch, or the same
+    product + customer, and surfaces them so the analyst can check before
+    logging a possible duplicate."""
+    extracted = state.get("extracted_data") or {}
+    batch_number = extracted.get("batch_number")
+    product_name = extracted.get("product_name")
+    customer_name = extracted.get("customer_name")
+
+    if not batch_number and not (product_name and customer_name):
+        state["duplicate_matches"] = []
+        return state
+
+    try:
+        # Imported lazily to avoid a circular import (database.py doesn't
+        # import graph.py, but this keeps the dependency one-directional
+        # and obvious at the call site).
+        from app.database import SessionLocal
+        from app.models import Complaint
+
+        db = SessionLocal()
+        try:
+            filters = []
+            if batch_number:
+                filters.append(Complaint.batch_number == batch_number)
+            if product_name and customer_name:
+                filters.append((Complaint.product_name == product_name) & (Complaint.customer_name == customer_name))
+
+            matches = db.query(Complaint).filter(or_(*filters)).order_by(Complaint.created_at.desc()).limit(5).all()
+
+            state["duplicate_matches"] = [
+                {
+                    "id": str(m.id),
+                    "product_name": m.product_name,
+                    "batch_number": m.batch_number,
+                    "customer_name": m.customer_name,
+                    "created_at": m.created_at.isoformat() if m.created_at else None,
+                }
+                for m in matches
+            ]
+        finally:
+            db.close()
+    except Exception as exc:
+        logger.error(f"[duplicate_check_node] DB lookup failed: {type(exc).__name__}: {exc}")
+        state["duplicate_matches"] = []
+
     return state
 
 
@@ -116,9 +199,62 @@ def risk_assessment_node(state: ComplaintGraphState) -> ComplaintGraphState:
     ])
 
     chain = prompt | risk_llm
-    result = chain.invoke({"data": json.dumps(extracted, indent=2)})
+    data, error = _safe_invoke(chain, {"data": json.dumps(extracted, indent=2)}, "risk_assessment_node")
 
-    state["risk_assessment"] = _to_dict(result)
+    if error:
+        state["notice"] = state.get("notice") or error
+        state["risk_assessment"] = {
+            "severity_suggested": None,
+            "suggested_next_action": None,
+            "initial_risk_assessment": None,
+        }
+        return state
+
+    state["risk_assessment"] = data
+    return state
+
+
+def enrichment_node(state: ComplaintGraphState) -> ComplaintGraphState:
+    """Bonus features: Complaint Summary + Root Cause Recommendation + CAPA
+    Recommendation, generated together from the same context in one call."""
+    extracted = state.get("extracted_data") or {}
+
+    if not extracted.get("product_name") or not extracted.get("complaint_description"):
+        state["complaint_summary"] = None
+        state["root_cause_recommendation"] = None
+        state["capa_recommendation"] = None
+        return state
+
+    prompt = ChatPromptTemplate.from_messages([
+        ("system",
+         "You are a QA analyst assistant. Based on the complaint data and "
+         "risk assessment below, respond with a JSON object with exactly "
+         "these keys: complaint_summary, root_cause_recommendation, "
+         "capa_recommendation — all strings. Respond with ONLY the JSON "
+         "object, no other text."),
+        ("human", "Complaint data:\n{data}\n\nRisk assessment:\n{risk}"),
+    ])
+
+    chain = prompt | enrichment_llm
+    data, error = _safe_invoke(
+        chain,
+        {
+            "data": json.dumps(extracted, indent=2),
+            "risk": json.dumps(state.get("risk_assessment") or {}, indent=2),
+        },
+        "enrichment_node",
+    )
+
+    if error:
+        state["notice"] = state.get("notice") or error
+        state["complaint_summary"] = None
+        state["root_cause_recommendation"] = None
+        state["capa_recommendation"] = None
+        return state
+
+    state["complaint_summary"] = data.get("complaint_summary")
+    state["root_cause_recommendation"] = data.get("root_cause_recommendation")
+    state["capa_recommendation"] = data.get("capa_recommendation")
     return state
 
 
@@ -150,17 +286,23 @@ def correction_node(state: ComplaintGraphState) -> ComplaintGraphState:
     ])
 
     chain = prompt | correction_llm
-    result = chain.invoke({
-        "data": json.dumps(extracted, indent=2),
-        "message": message,
-    })
-    data = _to_dict(result)
-    updated_fields = data.get("updated_fields", {}) or {}
-    confirmation_message = data.get("confirmation_message") or (
-        f"Updated {', '.join(updated_fields.keys())}."
-        if updated_fields
-        else "I'm the AIVOA intake copilot — happy to help fill in or correct any complaint fields. Let me know what you'd like to add or change."
+    data, error = _safe_invoke(
+        chain,
+        {"data": json.dumps(extracted, indent=2), "message": message},
+        "correction_node",
     )
+
+    if error:
+        confirmation_message = error
+        updated_fields = {}
+        state["notice"] = error
+    else:
+        updated_fields = data.get("updated_fields", {}) or {}
+        confirmation_message = data.get("confirmation_message") or (
+            f"Updated {', '.join(updated_fields.keys())}."
+            if updated_fields
+            else "I'm the AIVOA intake copilot — happy to help fill in or correct any complaint fields. Let me know what you'd like to add or change."
+        )
 
     extracted.update({k: v for k, v in updated_fields.items() if v is not None})
     state["extracted_data"] = extracted
@@ -190,12 +332,16 @@ def completeness_checker(state: ComplaintGraphState) -> ComplaintGraphState:
 def _build_intake_graph():
     graph = StateGraph(ComplaintGraphState)
     graph.add_node("parse_input_node", parse_input_node)
+    graph.add_node("duplicate_check_node", duplicate_check_node)
     graph.add_node("risk_assessment_node", risk_assessment_node)
+    graph.add_node("enrichment_node", enrichment_node)
     graph.add_node("completeness_checker", completeness_checker)
 
     graph.set_entry_point("parse_input_node")
-    graph.add_edge("parse_input_node", "risk_assessment_node")
-    graph.add_edge("risk_assessment_node", "completeness_checker")
+    graph.add_edge("parse_input_node", "duplicate_check_node")
+    graph.add_edge("duplicate_check_node", "risk_assessment_node")
+    graph.add_edge("risk_assessment_node", "enrichment_node")
+    graph.add_edge("enrichment_node", "completeness_checker")
     graph.add_edge("completeness_checker", END)
     return graph.compile()
 
@@ -203,12 +349,16 @@ def _build_intake_graph():
 def _build_correction_graph():
     graph = StateGraph(ComplaintGraphState)
     graph.add_node("correction_node", correction_node)
+    graph.add_node("duplicate_check_node", duplicate_check_node)
     graph.add_node("risk_assessment_node", risk_assessment_node)
+    graph.add_node("enrichment_node", enrichment_node)
     graph.add_node("completeness_checker", completeness_checker)
 
     graph.set_entry_point("correction_node")
-    graph.add_edge("correction_node", "risk_assessment_node")
-    graph.add_edge("risk_assessment_node", "completeness_checker")
+    graph.add_edge("correction_node", "duplicate_check_node")
+    graph.add_edge("duplicate_check_node", "risk_assessment_node")
+    graph.add_edge("risk_assessment_node", "enrichment_node")
+    graph.add_edge("enrichment_node", "completeness_checker")
     graph.add_edge("completeness_checker", END)
     return graph.compile()
 

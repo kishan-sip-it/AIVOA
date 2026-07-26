@@ -50,11 +50,27 @@ export async function chatCorrection({ message, state }) {
 /**
  * POST /api/complaint/commit — persist the finalized complaint to Postgres.
  */
-export async function commitComplaint({ extracted_data, risk_assessment, raw_input, chat_history }) {
+export async function commitComplaint({
+  extracted_data,
+  risk_assessment,
+  raw_input,
+  chat_history,
+  complaint_summary,
+  root_cause_recommendation,
+  capa_recommendation,
+}) {
   const response = await fetch(`${API_BASE_URL}/api/complaint/commit`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ extracted_data, risk_assessment, raw_input, chat_history }),
+    body: JSON.stringify({
+      extracted_data,
+      risk_assessment,
+      raw_input,
+      chat_history,
+      complaint_summary,
+      root_cause_recommendation,
+      capa_recommendation,
+    }),
   });
   return handle(response);
 }

@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models import Complaint
-from app.services.pdf_service import extract_text_from_pdf
+from app.services.document_service import extract_text, SUPPORTED_EXTENSIONS
 from app.graph import intake_graph, correction_graph
 from app.schemas import (
     ChatRequest,
@@ -44,14 +44,17 @@ async def process_complaint(
     # (e.g. Swagger's "Try it out" sends an empty file part) — so we check
     # for a non-empty filename, not just `if file:`.
     if file and file.filename:
-        if file.content_type != "application/pdf" and not file.filename.lower().endswith(".pdf"):
-            raise HTTPException(status_code=400, detail="Only PDF file uploads are supported.")
+        if not file.filename.lower().endswith(SUPPORTED_EXTENSIONS):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type. Supported formats: {', '.join(SUPPORTED_EXTENSIONS)}.",
+            )
         file_bytes = await file.read()
         try:
-            pdf_text = extract_text_from_pdf(file_bytes)
+            doc_text = extract_text(file.filename, file_bytes)
         except ValueError as e:
             raise HTTPException(status_code=422, detail=str(e))
-        input_text = f"{input_text}\n\n{pdf_text}".strip()
+        input_text = f"{input_text}\n\n{doc_text}".strip()
 
     initial_state = {
         "raw_input": input_text,

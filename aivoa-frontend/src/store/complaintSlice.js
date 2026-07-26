@@ -5,6 +5,10 @@ const initialState = {
   rawInput: "",
   extractedData: { ...EMPTY_EXTRACTED_DATA },
   riskAssessment: { ...EMPTY_RISK_ASSESSMENT },
+  complaintSummary: null,
+  rootCauseRecommendation: null,
+  capaRecommendation: null,
+  duplicateMatches: [],
   status: "pending", // "pending" | "ready" — mirrors backend ComplaintGraphState.status
   isComplete: false,
   highlightedFields: [], // field names to flash green for 2s (AI-driven updates)
@@ -35,7 +39,16 @@ const complaintSlice = createSlice({
     // backend's extracted_data/risk_assessment into state and flags which
     // fields actually changed so the UI can highlight them green.
     applyWorkflowResult(state, action) {
-      const { extracted_data, risk_assessment, is_complete, status } = action.payload;
+      const {
+        extracted_data,
+        risk_assessment,
+        is_complete,
+        status,
+        complaint_summary,
+        root_cause_recommendation,
+        capa_recommendation,
+        duplicate_matches,
+      } = action.payload;
       const changed = [];
 
       Object.entries(extracted_data || {}).forEach(([field, value]) => {
@@ -46,6 +59,10 @@ const complaintSlice = createSlice({
 
       state.extractedData = { ...state.extractedData, ...extracted_data };
       state.riskAssessment = { ...state.riskAssessment, ...risk_assessment };
+      state.complaintSummary = complaint_summary ?? state.complaintSummary;
+      state.rootCauseRecommendation = root_cause_recommendation ?? state.rootCauseRecommendation;
+      state.capaRecommendation = capa_recommendation ?? state.capaRecommendation;
+      state.duplicateMatches = duplicate_matches ?? state.duplicateMatches;
       state.isComplete = Boolean(is_complete);
       state.status = status || (state.isComplete ? "ready" : "pending");
       state.highlightedFields = changed;

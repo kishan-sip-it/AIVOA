@@ -8,6 +8,18 @@ import { MANDATORY_FIELDS, FIELD_LABELS } from "../lib/complaintFields";
 
 const now = () => new Date().toISOString();
 
+// Must match SUPPORTED_EXTENSIONS in app/services/document_service.py
+const SUPPORTED_EXTENSIONS = [".pdf", ".docx", ".txt", ".eml"];
+
+function fileTypeLabel(fileName = "") {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".pdf")) return "PDF Document";
+  if (lower.endsWith(".docx")) return "Word Document";
+  if (lower.endsWith(".txt")) return "Text File";
+  if (lower.endsWith(".eml")) return "Email Message";
+  return "Document";
+}
+
 // Builds a specific, useful reply after intake extraction — naming exactly
 // what was picked up and what's still missing — instead of a generic line
 // that reads the same regardless of how much the model actually extracted.
@@ -32,9 +44,18 @@ function buildIntakeReply(extractedData) {
 export default function CopilotChat() {
   const dispatch = useDispatch();
   const { messages } = useSelector((state) => state.chat);
-  const { extractedData, riskAssessment, isComplete, status, rawInput, isProcessing } = useSelector(
-    (state) => state.complaint
-  );
+  const {
+    extractedData,
+    riskAssessment,
+    isComplete,
+    status,
+    rawInput,
+    isProcessing,
+    complaintSummary,
+    rootCauseRecommendation,
+    capaRecommendation,
+    duplicateMatches,
+  } = useSelector((state) => state.complaint);
   const [message, setMessage] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [progress, setProgress] = useState(0);
@@ -78,6 +99,11 @@ export default function CopilotChat() {
       is_complete: isComplete,
       status,
       last_message: "",
+      complaint_summary: complaintSummary,
+      root_cause_recommendation: rootCauseRecommendation,
+      capa_recommendation: capaRecommendation,
+      duplicate_matches: duplicateMatches,
+      notice: null,
     };
   }
 
@@ -98,7 +124,7 @@ export default function CopilotChat() {
           addMessage({
             id: crypto.randomUUID(),
             role: "assistant",
-            content: buildIntakeReply(result.extracted_data),
+            content: result.notice || buildIntakeReply(result.extracted_data),
             timestamp: now(),
           })
         );
@@ -123,12 +149,12 @@ export default function CopilotChat() {
 
   async function onFileChosen(file) {
     if (!file) return;
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
+    if (!SUPPORTED_EXTENSIONS.some((ext) => file.name.toLowerCase().endsWith(ext))) {
       dispatch(
         addMessage({
           id: crypto.randomUUID(),
           role: "assistant",
-          content: "Only PDF attachments are supported right now — please attach a .pdf, or paste the complaint text directly.",
+          content: `That file type isn't supported — please attach a ${SUPPORTED_EXTENSIONS.join(", ")} file, or paste the complaint text directly.`,
           timestamp: now(),
         })
       );
@@ -152,7 +178,7 @@ export default function CopilotChat() {
         addMessage({
           id: crypto.randomUUID(),
           role: "assistant",
-          content: buildIntakeReply(result.extracted_data),
+          content: result.notice || buildIntakeReply(result.extracted_data),
           timestamp: now(),
         })
       );
@@ -209,7 +235,7 @@ export default function CopilotChat() {
         <div className="pointer-events-none absolute inset-2 z-20 flex flex-col items-center justify-center gap-2 rounded-2xl border-2 border-dashed border-indigo-300 bg-slate-950/90 backdrop-blur-sm">
           <CloudUpload className="h-8 w-8 text-indigo-300" />
           <p className="text-sm font-semibold text-white">Drop your complaint document here</p>
-          <p className="text-xs text-slate-400">PDF only, right now</p>
+          <p className="text-xs text-slate-400">PDF, DOCX, TXT, or EML</p>
         </div>
       )}
 
@@ -257,7 +283,7 @@ export default function CopilotChat() {
                 </div>
                 <div className="min-w-0">
                   <p className="truncate text-sm font-semibold text-white">{item.fileName}</p>
-                  <p className="text-xs text-slate-400">PDF Document</p>
+                  <p className="text-xs text-slate-400">{fileTypeLabel(item.fileName)}</p>
                 </div>
               </div>
             ) : (
@@ -315,7 +341,7 @@ export default function CopilotChat() {
             <input
               ref={fileInputRef}
               type="file"
-              accept=".pdf"
+              accept=".pdf,.docx,.txt,.eml"
               className="hidden"
               onChange={(e) => {
                 onFileChosen(e.target.files?.[0]);
@@ -328,7 +354,7 @@ export default function CopilotChat() {
               className="inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium text-slate-400 transition hover:bg-white/10 hover:text-white"
             >
               <Paperclip className="h-3.5 w-3.5" />
-              Attach PDF
+              Attach file
             </button>
             <button
               type="button"
@@ -342,7 +368,7 @@ export default function CopilotChat() {
         </div>
         <div className="mt-3 flex items-center justify-center gap-1.5 text-[10px] text-slate-500">
           <FileText className="h-3 w-3" />
-          AI outputs are captured in the complaint audit record — or drag & drop a PDF anywhere in this panel
+          AI outputs are captured in the complaint audit record — or drag & drop a document anywhere in this panel
         </div>
         <div className="mt-1.5 text-center text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-600">
           Powered by LangGraph

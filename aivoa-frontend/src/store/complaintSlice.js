@@ -49,6 +49,10 @@ const complaintSlice = createSlice({
         capa_recommendation,
         duplicate_matches,
       } = action.payload;
+
+      // eslint-disable-next-line no-console
+      console.log("[applyWorkflowResult] duplicate_matches received:", duplicate_matches);
+
       const changed = [];
 
       Object.entries(extracted_data || {}).forEach(([field, value]) => {

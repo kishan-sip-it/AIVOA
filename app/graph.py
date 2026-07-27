@@ -135,7 +135,13 @@ def duplicate_check_node(state: ComplaintGraphState) -> ComplaintGraphState:
     product_name = extracted.get("product_name")
     customer_name = extracted.get("customer_name")
 
+    logger.info(
+        f"[duplicate_check_node] checking batch_number={batch_number!r} "
+        f"product_name={product_name!r} customer_name={customer_name!r}"
+    )
+
     if not batch_number and not (product_name and customer_name):
+        logger.info("[duplicate_check_node] skipped — not enough data to check yet")
         state["duplicate_matches"] = []
         return state
 
@@ -155,6 +161,7 @@ def duplicate_check_node(state: ComplaintGraphState) -> ComplaintGraphState:
                 filters.append((Complaint.product_name == product_name) & (Complaint.customer_name == customer_name))
 
             matches = db.query(Complaint).filter(or_(*filters)).order_by(Complaint.created_at.desc()).limit(5).all()
+            logger.info(f"[duplicate_check_node] query returned {len(matches)} match(es)")
 
             state["duplicate_matches"] = [
                 {
@@ -169,6 +176,9 @@ def duplicate_check_node(state: ComplaintGraphState) -> ComplaintGraphState:
         finally:
             db.close()
     except Exception as exc:
+        # If this fires, it'll be logged clearly here — e.g. a missing
+        # column from a DB migration that wasn't applied would show up as a
+        # ProgrammingError right in this line, instead of silently vanishing.
         logger.error(f"[duplicate_check_node] DB lookup failed: {type(exc).__name__}: {exc}")
         state["duplicate_matches"] = []
 
@@ -298,11 +308,26 @@ def correction_node(state: ComplaintGraphState) -> ComplaintGraphState:
         state["notice"] = error
     else:
         updated_fields = data.get("updated_fields", {}) or {}
-        confirmation_message = data.get("confirmation_message") or (
-            f"Updated {', '.join(updated_fields.keys())}."
-            if updated_fields
-            else "I'm the AIVOA intake copilot — happy to help fill in or correct any complaint fields. Let me know what you'd like to add or change."
-        )
+
+        if updated_fields:
+            # FIX: don't trust the model's own confirmation_message text here
+            # — in testing, gpt-oss-20b frequently collapsed it to a lazy,
+            # context-free "Updated." even for a fully-specified correction.
+            # Build the confirmation deterministically from what actually
+            # changed instead, so it's always accurate and specific.
+            changes = ", ".join(f"{k.replace('_', ' ')} to '{v}'" for k, v in updated_fields.items())
+            confirmation_message = f"Updated {changes}."
+        else:
+            # Nothing changed — this is chit-chat, a question, or an
+            # off-topic/refused message. The model's own reply is fine here
+            # *if* it's substantive; filter out lazy one-word junk like
+            # "Updated." or "Done." that doesn't actually answer anything.
+            model_reply = (data.get("confirmation_message") or "").strip()
+            is_junk = len(model_reply) < 10 or model_reply.lower().rstrip(".") in {"updated", "done", "ok", "sure"}
+            confirmation_message = model_reply if model_reply and not is_junk else (
+                "I'm the AIVOA intake copilot — happy to help fill in or correct any complaint fields. "
+                "Let me know what you'd like to add or change."
+            )
 
     extracted.update({k: v for k, v in updated_fields.items() if v is not None})
     state["extracted_data"] = extracted
@@ -365,3 +390,10 @@ def _build_correction_graph():
 
 intake_graph = _build_intake_graph()
 correction_graph = _build_correction_graph()
+
+print(
+    "[graph.py] Loaded. Correction graph nodes: "
+    "correction_node -> duplicate_check_node -> risk_assessment_node -> "
+    "enrichment_node -> completeness_checker",
+    flush=True,
+)

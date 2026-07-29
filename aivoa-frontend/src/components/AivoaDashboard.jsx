@@ -22,12 +22,7 @@ export default function AivoaDashboard() {
           </div>
           <div className="flex items-center gap-2 sm:gap-4">
             <StatusBadge />
-            <button className="hidden rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 sm:block" aria-label="Help">
-              
-            </button>
-            <button className="hidden rounded-lg p-2 text-slate-400 hover:bg-slate-100 hover:text-slate-700 sm:block" aria-label="Notifications">
-              
-            </button>
+            
             <div className="hidden h-7 w-px bg-slate-200 sm:block" />
             <button className="flex items-center gap-2 rounded-lg py-1 pl-1 pr-0.5 text-xs font-semibold text-slate-600 hover:bg-slate-50">
               <span className="grid h-7 w-7 place-items-center rounded-md bg-indigo-100 text-indigo-700">

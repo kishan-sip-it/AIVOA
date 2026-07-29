@@ -28,7 +28,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://localhost:5173"],
+    allow_origins=["http://localhost:3000", "http://localhost:5173", "https://aivoa1.netlify.app"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -44,7 +44,7 @@ app.include_router(complaint.router)
 print("Complaint router loaded.", flush=True)
 
 
-ALLOWED_ORIGINS = {"http://localhost:3000", "http://localhost:5173"}
+ALLOWED_ORIGINS = {"http://localhost:3000", "http://localhost:5173", "https://aivoa1.netlify.app"}
 
 
 @app.exception_handler(Exception)

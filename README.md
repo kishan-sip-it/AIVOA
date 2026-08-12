@@ -170,13 +170,8 @@ App: http://localhost:5173
 |---|---|
 | AI Risk Classification | ✅ Implemented — `risk_assessment_node` (severity, next action, risk narrative) |
 | Complaint Completeness Checker | ✅ Implemented — `completeness_checker` node drives the status badge |
-| Complaint Summary | ⬜ Planned |
-| Root Cause Recommendation | ⬜ Planned |
-| Duplicate Complaint Detection | ⬜ Planned |
-| CAPA Recommendation | ⬜ Planned |
+| Complaint Summary | ✅ Implemented |
+| Root Cause Recommendation | ✅ Implemented |
+| Duplicate Complaint Detection | ✅ Implemented |
+| CAPA Recommendation | ✅ Implemented |
 
-*(Update this table as more bonus features are added.)*
-
-## Demo video
-
-📹 *[Add your video link here after recording]*

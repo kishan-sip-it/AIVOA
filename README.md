@@ -2,7 +2,7 @@
 # AIVOA — AI-Powered Customer Complaint Management System
 
 An AI-assisted intake and triage system for pharmaceutical customer complaints (API & FDF quality assurance). A QA analyst pastes a raw complaint (email, call transcript) or uploads a document, and an AI agent extracts structured intake fields, runs an initial risk assessment, and lets the analyst correct any field conversationally before committing the record to a QMS ledger.
-
+Live Link : https://aivoa1.netlify.app/
 ## Table of contents
 - [Overview](#overview)
 - [Tech stack](#tech-stack)

@@ -13,7 +13,7 @@ Live Link : https://aivoa1.netlify.app/
 - [API reference](#api-reference)
 - [Key design decisions & adaptations](#key-design-decisions--adaptations)
 - [Bonus AI features](#bonus-ai-features)
-- [Demo video](#demo-video)
+  
 
 ## Overview
 

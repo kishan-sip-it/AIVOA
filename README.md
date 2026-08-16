@@ -2,7 +2,7 @@
 # AIVOA — AI-Powered Customer Complaint Management System
 
 An AI-assisted intake and triage system for pharmaceutical customer complaints (API & FDF quality assurance). A QA analyst pastes a raw complaint (email, call transcript) or uploads a document, and an AI agent extracts structured intake fields, runs an initial risk assessment, and lets the analyst correct any field conversationally before committing the record to a QMS ledger.
-
+Live Link : https://aivoa1.netlify.app/
 ## Table of contents
 - [Overview](#overview)
 - [Tech stack](#tech-stack)
@@ -13,7 +13,7 @@ An AI-assisted intake and triage system for pharmaceutical customer complaints (
 - [API reference](#api-reference)
 - [Key design decisions & adaptations](#key-design-decisions--adaptations)
 - [Bonus AI features](#bonus-ai-features)
-- [Demo video](#demo-video)
+  
 
 ## Overview
 
@@ -170,13 +170,8 @@ App: http://localhost:5173
 |---|---|
 | AI Risk Classification | ✅ Implemented — `risk_assessment_node` (severity, next action, risk narrative) |
 | Complaint Completeness Checker | ✅ Implemented — `completeness_checker` node drives the status badge |
-| Complaint Summary | ⬜ Planned |
-| Root Cause Recommendation | ⬜ Planned |
-| Duplicate Complaint Detection | ⬜ Planned |
-| CAPA Recommendation | ⬜ Planned |
+| Complaint Summary | ✅ Implemented |
+| Root Cause Recommendation | ✅ Implemented |
+| Duplicate Complaint Detection | ✅ Implemented |
+| CAPA Recommendation | ✅ Implemented |
 
-*(Update this table as more bonus features are added.)*
-
-## Demo video
-
-📹 *[Add your video link here after recording]*

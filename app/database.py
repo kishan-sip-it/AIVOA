@@ -3,13 +3,16 @@ database.py
 ------------
 SQLAlchemy engine, session, and declarative base for PostgreSQL.
 
-This file is a small addition beyond the requested list (main.py, models.py,
-graph.py, schemas.py) because SQLAlchemy needs an engine/session factory
-somewhere — keeping it isolated here keeps models.py focused purely on
-table definitions.
+Alembic is responsible for schema migrations. The application startup runs
+`alembic upgrade head` so deployed environments stay in sync with the ORM
+models without relying on SQLAlchemy `create_all()` to alter existing tables.
 """
 
 import os
+from pathlib import Path
+
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker, declarative_base
 
@@ -34,6 +37,14 @@ def get_db():
 
 
 def init_db():
-    """Create all tables. Called once on app startup."""
+    """Run all pending Alembic migrations on application startup."""
     from app import models  # noqa: F401  (ensures models are registered)
-    Base.metadata.create_all(bind=engine)
+
+    project_root = Path(__file__).resolve().parent.parent
+    alembic_ini = project_root / "alembic.ini"
+
+    if not alembic_ini.exists():
+        raise RuntimeError(f"Alembic configuration not found: {alembic_ini}")
+
+    config = Config(str(alembic_ini))
+    command.upgrade(config, "head")

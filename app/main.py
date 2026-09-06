@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.database import init_db
-from app.routers import complaint
+from app.routers import complaint, followup
 
 logger = logging.getLogger("uvicorn.error")
 
@@ -34,14 +34,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# FIX: router already declares prefix="/api/complaint" inside complaint.py
-# (`router = APIRouter(prefix="/api/complaint", ...)`), so include it ONCE
-# with no extra prefix here. Including it twice (once with an extra prefix,
-# once without) is what produced the duplicate
-# /api/complaint/api/complaint/... routes you saw in Swagger.
+# The original complaint router provides intake, correction and commit endpoints.
+# The follow-up router adds intent-aware routing so natural conversation and
+# application questions don't get forced through the field-mutation workflow.
 print("Loading complaint router...", flush=True)
 app.include_router(complaint.router)
 print("Complaint router loaded.", flush=True)
+print("Loading intelligent follow-up router...", flush=True)
+app.include_router(followup.router)
+print("Intelligent follow-up router loaded.", flush=True)
 
 
 ALLOWED_ORIGINS = {"http://localhost:3000", "http://localhost:5173", "https://aivoa1.netlify.app"}
@@ -49,16 +50,7 @@ ALLOWED_ORIGINS = {"http://localhost:3000", "http://localhost:5173", "https://ai
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    """Logs the full traceback to terminal AND returns it in the response
-    body, so Swagger stops showing a bare 'Internal Server Error'.
-
-    FIX: also manually sets the CORS header here. Starlette's CORSMiddleware
-    normally injects Access-Control-Allow-Origin by wrapping `send`, but that
-    wrapping is unreliable for responses built by a custom Exception handler
-    (a known FastAPI/Starlette gotcha) — which is exactly why the browser
-    console showed "CORS header 'Access-Control-Allow-Origin' missing" only
-    on the 500 responses, never on the 200s.
-    """
+    """Log the traceback server-side and return a CORS-safe JSON error."""
     tb = traceback.format_exc()
     logger.error(f"Unhandled exception on {request.method} {request.url.path}:\n{tb}")
     print(tb, file=sys.stderr, flush=True)

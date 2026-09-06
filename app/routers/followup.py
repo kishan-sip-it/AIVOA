@@ -26,9 +26,6 @@ _GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 if not _GROQ_API_KEY:
     raise RuntimeError("GROQ_API_KEY is required")
 
-# Reuse the same production model family as the workflow, but this path uses
-# ordinary text generation because the response itself is conversation, not a
-# database mutation. Keeping temperature low preserves consistency.
 _followup_llm = ChatGroq(
     model="openai/gpt-oss-20b",
     temperature=0.2,
@@ -63,14 +60,12 @@ _GENERAL_CHAT_PROMPT = ChatPromptTemplate.from_messages([
     ("human", "User message: {message}"),
 ])
 
-
-# These are intentionally conservative aliases. We only send an input through
-# the mutation path when it looks like an actual field-edit instruction.
 _FIELD_ALIASES = (
     "complaint source",
     "source",
     "customer name",
     "customer",
+    "name",
     "product name",
     "product",
     "product strength",
@@ -121,9 +116,6 @@ def looks_like_field_edit(message: str) -> bool:
         return False
 
     lowered = text.lower()
-
-    # Questions should stay in natural-language mode unless they explicitly
-    # contain a clear edit directive such as "change X to Y".
     question_like = bool(_QUESTION_START.match(lowered))
     has_edit_verb = any(re.search(rf"\b{re.escape(v)}\b", lowered) for v in _EDIT_VERBS)
     has_field = any(alias in lowered for alias in _FIELD_ALIASES)
@@ -134,10 +126,8 @@ def looks_like_field_edit(message: str) -> bool:
     if has_edit_verb and has_field:
         return True
 
-    # Also allow compact updates such as "customer name: Ramesh" or
-    # "batch number = XYZ-123" without requiring an explicit verb.
     assignment = re.search(
-        r"^(?:the\s+)?(?:customer\s+name|customer|product\s+name|product|product\s+strength|strength|batch(?:\s+number)?|lot(?:\s+number)?|quantity|affected\s+quantity|manufacturing\s+date|expiry\s+date|originating\s+(?:site|site\s+block)|site\s+block|impacted\s+npm|npm|complaint\s+category|category|complaint\s+date|priority|complaint\s+description|description)\s*(?:is|=|:)\s*.+$",
+        r"^(?:the\s+)?(?:name|customer\s+name|customer|product\s+name|product|product\s+strength|strength|batch(?:\s+number)?|lot(?:\s+number)?|quantity|affected\s+quantity|manufacturing\s+date|expiry\s+date|originating\s+(?:site|site\s+block)|site\s+block|impacted\s+npm|npm|complaint\s+category|category|complaint\s+date|priority|complaint\s+description|description)\s*(?:is|=|:)\s*.+$",
         lowered,
     )
     return bool(assignment)
@@ -166,8 +156,6 @@ def _general_reply(state: dict[str, Any], message: str) -> str:
             "risk assessment, workflow, or help you add/correct complaint details."
         )
 
-    # Guard against the exact failure mode seen in production: a valid call
-    # returning a lazy one-word acknowledgement instead of an answer.
     normalized = text.lower().rstrip(".!? ")
     if not text or normalized in {"updated", "done", "ok", "okay", "sure"}:
         return (

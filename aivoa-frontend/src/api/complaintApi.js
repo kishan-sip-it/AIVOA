@@ -4,6 +4,49 @@
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "http://127.0.0.1:8000";
 
+// Keep a lightweight in-memory copy of the current workflow state. This is
+// especially useful when the backend needs to handle a follow-up even if the
+// frontend has not extracted any fields yet; Redux can still update normally,
+// while this module guarantees the next message reaches the intent-aware
+// follow-up endpoint instead of restarting intake.
+let conversationStarted = false;
+let conversationState = null;
+
+function emptyWorkflowState() {
+  return {
+    raw_input: "",
+    extracted_data: {},
+    chat_history: [],
+    risk_assessment: {},
+    is_complete: false,
+    status: "pending",
+    last_message: "",
+    complaint_summary: null,
+    root_cause_recommendation: null,
+    capa_recommendation: null,
+    duplicate_matches: [],
+    notice: null,
+  };
+}
+
+function rememberWorkflowState(result) {
+  conversationStarted = true;
+  conversationState = {
+    ...emptyWorkflowState(),
+    raw_input: result?.raw_input || conversationState?.raw_input || "",
+    extracted_data: result?.extracted_data || {},
+    chat_history: result?.chat_history || [],
+    risk_assessment: result?.risk_assessment || {},
+    is_complete: Boolean(result?.is_complete),
+    status: result?.status || "pending",
+    complaint_summary: result?.complaint_summary ?? null,
+    root_cause_recommendation: result?.root_cause_recommendation ?? null,
+    capa_recommendation: result?.capa_recommendation ?? null,
+    duplicate_matches: result?.duplicate_matches || [],
+    notice: result?.notice ?? null,
+  };
+}
+
 async function handle(response) {
   if (!response.ok) {
     let detail = "Request failed.";
@@ -18,11 +61,46 @@ async function handle(response) {
   return response.json();
 }
 
+async function postFollowUp(message, state = conversationState || emptyWorkflowState()) {
+  const response = await fetch(`${API_BASE_URL}/api/complaint/follow-up`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message, state }),
+  });
+  const result = await handle(response);
+  rememberWorkflowState(result);
+  return result;
+}
+
+function isConciseFieldEdit(text) {
+  return /^(add|change|update|set|correct|replace|edit|modify)\s+name\s+(to|as)\s+.+$/i.test(text || "");
+}
+
+function isCasualOnlyMessage(text) {
+  return /^(hi|hello|hey|how are you|how's your day|how is your day|good morning|good evening|thanks|thank you)\s*[!?.,]*$/i.test(
+    (text || "").trim()
+  );
+}
+
 /**
- * POST /api/complaint/process — new complaint intake, either free text or a
- * PDF/DOCX/TXT/EML file (multipart/form-data).
+ * POST /api/complaint/process — initial complaint intake or document upload.
+ * If a text conversation has already started, or the first message is a
+ * concise field edit/casual message, route through the intent-aware follow-up
+ * endpoint so the request is not forced through extraction again.
  */
 export async function processComplaint({ rawText, file }) {
+  const text = (rawText || "").trim();
+
+  if (text && conversationStarted) {
+    return postFollowUp(text);
+  }
+
+  // A concise edit such as "add name to Kishan" should work even when the
+  // user starts from a fresh page with an otherwise empty complaint state.
+  if (text && (isConciseFieldEdit(text) || isCasualOnlyMessage(text))) {
+    return postFollowUp(text, conversationState || emptyWorkflowState());
+  }
+
   const formData = new FormData();
   if (rawText) formData.append("raw_text", rawText);
   if (file) formData.append("file", file);
@@ -31,7 +109,9 @@ export async function processComplaint({ rawText, file }) {
     method: "POST",
     body: formData,
   });
-  return handle(response);
+  const result = await handle(response);
+  rememberWorkflowState(result);
+  return result;
 }
 
 /**
@@ -45,7 +125,9 @@ export async function chatCorrection({ message, state }) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, state }),
   });
-  return handle(response);
+  const result = await handle(response);
+  rememberWorkflowState(result);
+  return result;
 }
 
 /**

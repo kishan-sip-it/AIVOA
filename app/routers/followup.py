@@ -61,47 +61,16 @@ _GENERAL_CHAT_PROMPT = ChatPromptTemplate.from_messages([
 ])
 
 _FIELD_ALIASES = (
-    "complaint source",
-    "source",
-    "customer name",
-    "customer",
-    "name",
-    "product name",
-    "product",
-    "product strength",
-    "strength",
-    "batch number",
-    "batch",
-    "lot number",
-    "lot",
-    "affected quantity",
-    "quantity",
-    "manufacturing date",
-    "expiry date",
-    "originating site block",
-    "originating site",
-    "site block",
-    "impacted npm",
-    "npm",
-    "complaint category",
-    "category",
-    "complaint date",
-    "priority",
-    "complaint description",
-    "description",
+    "complaint source", "source", "customer name", "customer", "name",
+    "product name", "product", "product strength", "strength", "batch number",
+    "batch", "lot number", "lot", "affected quantity", "quantity",
+    "manufacturing date", "expiry date", "originating site block",
+    "originating site", "site block", "impacted npm", "npm",
+    "complaint category", "category", "complaint date", "priority",
+    "complaint description", "description",
 )
 
-_EDIT_VERBS = (
-    "change",
-    "update",
-    "set",
-    "correct",
-    "replace",
-    "edit",
-    "modify",
-    "add",
-    "fill",
-)
+_EDIT_VERBS = ("change", "update", "set", "correct", "replace", "edit", "modify", "add", "fill")
 
 _QUESTION_START = re.compile(
     r"^(what|why|how|when|where|who|which|can|could|would|is|are|do|does|did|tell me|explain|describe)\b",
@@ -109,9 +78,21 @@ _QUESTION_START = re.compile(
 )
 
 _CONCISE_NAME_EDIT = re.compile(
-    r"^(?:add|change|update|set|correct|replace|edit|modify)\s+name\s+(?:to|as)\s+.+$",
+    r"^(?:add|change|update|set|correct|replace|edit|modify)\s+name\s+(?:to|as)\s+(.+)$",
     re.IGNORECASE,
 )
+
+
+def parse_concise_name_edit(message: str) -> str | None:
+    """Deterministically parse the very common 'change/add name to X' form.
+    This avoids spending an LLM call and guarantees the customer_name field is
+    updated when the user's intent is unambiguous.
+    """
+    match = _CONCISE_NAME_EDIT.match(" ".join((message or "").strip().split()))
+    if not match:
+        return None
+    value = match.group(1).strip().strip(".,!? ")
+    return value or None
 
 
 def looks_like_field_edit(message: str) -> bool:
@@ -122,7 +103,7 @@ def looks_like_field_edit(message: str) -> bool:
 
     lowered = text.lower()
 
-    if _CONCISE_NAME_EDIT.match(text):
+    if parse_concise_name_edit(text):
         return True
 
     question_like = bool(_QUESTION_START.match(lowered))
@@ -183,7 +164,19 @@ async def follow_up(payload: ChatRequest):
     message = payload.message.strip()
     state["last_message"] = message
 
-    if looks_like_field_edit(message):
+    # Deterministic path for an unambiguous name edit. This is both more
+    # reliable and cheaper than asking the model to interpret a trivial edit.
+    concise_name = parse_concise_name_edit(message)
+    if concise_name:
+        extracted = dict(state.get("extracted_data") or {})
+        extracted["customer_name"] = concise_name
+        state["extracted_data"] = extracted
+        history = list(state.get("chat_history") or [])
+        ai_message = f"Updated customer name to '{concise_name}'."
+        history.append({"role": "user", "content": message})
+        history.append({"role": "ai", "content": ai_message})
+        state["chat_history"] = history
+    elif looks_like_field_edit(message):
         try:
             result_state = correction_graph.invoke(state)
             ai_message = result_state.pop("_last_ai_message", None)
@@ -201,6 +194,7 @@ async def follow_up(payload: ChatRequest):
         history.append({"role": "ai", "content": ai_message})
         result_state["chat_history"] = history
 
+    result_state = locals().get("result_state", state)
     return ChatResponse(
         extracted_data=result_state.get("extracted_data", {}),
         risk_assessment=result_state.get("risk_assessment", {}),

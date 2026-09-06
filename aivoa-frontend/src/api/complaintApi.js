@@ -20,7 +20,7 @@ async function handle(response) {
 
 /**
  * POST /api/complaint/process — new complaint intake, either free text or a
- * PDF file (multipart/form-data, matching the backend's Form/File params).
+ * PDF/DOCX/TXT/EML file (multipart/form-data).
  */
 export async function processComplaint({ rawText, file }) {
   const formData = new FormData();
@@ -35,11 +35,12 @@ export async function processComplaint({ rawText, file }) {
 }
 
 /**
- * POST /api/complaint/chat — a follow-up correction/question. `state` must
- * match the backend's ComplaintGraphState shape exactly.
+ * POST /api/complaint/follow-up — intent-aware follow-up chat.
+ * Field edits use the LangGraph correction workflow; questions, application
+ * help and casual conversation use natural-language response generation.
  */
 export async function chatCorrection({ message, state }) {
-  const response = await fetch(`${API_BASE_URL}/api/complaint/chat`, {
+  const response = await fetch(`${API_BASE_URL}/api/complaint/follow-up`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ message, state }),

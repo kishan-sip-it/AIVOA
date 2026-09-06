@@ -108,6 +108,11 @@ _QUESTION_START = re.compile(
     re.IGNORECASE,
 )
 
+_CONCISE_NAME_EDIT = re.compile(
+    r"^(?:add|change|update|set|correct|replace|edit|modify)\s+name\s+(?:to|as)\s+.+$",
+    re.IGNORECASE,
+)
+
 
 def looks_like_field_edit(message: str) -> bool:
     """Return True only when the message strongly resembles a field mutation."""
@@ -116,6 +121,10 @@ def looks_like_field_edit(message: str) -> bool:
         return False
 
     lowered = text.lower()
+
+    if _CONCISE_NAME_EDIT.match(text):
+        return True
+
     question_like = bool(_QUESTION_START.match(lowered))
     has_edit_verb = any(re.search(rf"\b{re.escape(v)}\b", lowered) for v in _EDIT_VERBS)
     has_field = any(alias in lowered for alias in _FIELD_ALIASES)
@@ -127,7 +136,7 @@ def looks_like_field_edit(message: str) -> bool:
         return True
 
     assignment = re.search(
-        r"^(?:the\s+)?(?:name|customer\s+name|customer|product\s+name|product|product\s+strength|strength|batch(?:\s+number)?|lot(?:\s+number)?|quantity|affected\s+quantity|manufacturing\s+date|expiry\s+date|originating\s+(?:site|site\s+block)|site\s+block|impacted\s+npm|npm|complaint\s+category|category|complaint\s+date|priority|complaint\s+description|description)\s*(?:is|=|:)\s*.+$",
+        r"^(?:the\s+)?(?:complaint\s+source|source|customer\s+name|customer|name|product\s+name|product|product\s+strength|strength|batch(?:\s+number)?|lot(?:\s+number)?|quantity|affected\s+quantity|manufacturing\s+date|expiry\s+date|originating\s+(?:site|site\s+block)|site\s+block|impacted\s+npm|npm|complaint\s+category|category|complaint\s+date|priority|complaint\s+description|description)\s*(?:is|=|:)\s*.+$",
         lowered,
     )
     return bool(assignment)
